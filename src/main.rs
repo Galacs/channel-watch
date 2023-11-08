@@ -19,17 +19,14 @@ impl EventHandler for Handler {
             ]);
             
         if !messages.contains_key(channel.name()) { return; }
-            
-        // println!("{:?}", SystemTime::now());
-        let start = SystemTime::now();
-        channel.send_message(&ctx, |m| {
+
+        let msg = channel.send_message(&ctx, |m| {
             m.content(messages.get(channel.name()).unwrap())
         }).await.unwrap();
-        let since_now = SystemTime::now()
-            .duration_since(start)
-            .expect("Time went backwards");
-        println!("{:?}", since_now);
-        println!("{} message sent", channel.name);
+        let channel_date = channel.id.created_at();
+        let message_date = msg.id.created_at();
+        let time_diff = message_date.signed_duration_since(*channel_date);
+        println!("{} message sent {}ms after event", channel.name, time_diff.num_milliseconds());
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
