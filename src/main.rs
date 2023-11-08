@@ -18,7 +18,7 @@ impl EventHandler for Handler {
             ("ticket-0545", "test"),
             ]);
             
-            if !messages.contains_key(channel.name()) { return; }
+        if !messages.contains_key(channel.name()) { return; }
             
         // println!("{:?}", SystemTime::now());
         let start = SystemTime::now();
