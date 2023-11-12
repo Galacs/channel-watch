@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "0.2", features = ["macros"] }
+reqwest = "0.11.22"
+notify = { version = "6.1.1", default-features = false, features = ["macos_kqueue"] }
 
 [dependencies.serenity]
 default-features = false
@@ -18,5 +20,6 @@ features = [
     "model",
     "utils",
     "rustls_backend",
+    "standard_framework",
 ]
 version = "0.9"
