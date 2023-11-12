@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::env;
 
 use serenity::async_trait;
-use serenity::model::gateway::{GatewayIntents, Ready};
+use serenity::model::gateway::Ready;
 use serenity::model::prelude::GuildChannel;
 use serenity::prelude::*;
-
-use std::time::SystemTime;
 
 struct Handler;
 
@@ -25,7 +23,7 @@ impl EventHandler for Handler {
         }).await.unwrap();
         let channel_date = channel.id.created_at();
         let message_date = msg.id.created_at();
-        let time_diff = message_date.signed_duration_since(*channel_date);
+        let time_diff = message_date.signed_duration_since(channel_date);
         println!("{} message sent {}ms after event", channel.name, time_diff.num_milliseconds());
     }
 
@@ -38,7 +36,7 @@ impl EventHandler for Handler {
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let mut client = Client::builder(token, GatewayIntents::default())
+    let mut client = Client::builder(token)
         .event_handler(Handler)
         .await
         .expect("Error creating client");
