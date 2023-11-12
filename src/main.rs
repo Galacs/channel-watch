@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::env;
 
 use serenity::async_trait;
+use serenity::framework::StandardFramework;
+use serenity::framework::standard::CommandResult;
+use serenity::framework::standard::macros::{command, group};
 use serenity::model::gateway::{GatewayIntents, Ready};
-use serenity::model::prelude::GuildChannel;
+use serenity::model::prelude::{GuildChannel, Message};
 use serenity::prelude::*;
-
-use std::time::SystemTime;
 
 struct Handler;
 
@@ -34,12 +35,34 @@ impl EventHandler for Handler {
     }
 }
 
+#[group]
+#[commands(ping)]
+struct General;
+
+#[command]
+async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
+    let now = tokio::time::Instant::now();
+    let _ = reqwest::get("https://discordapp.com/api/v10/gateway").await;
+    let gateway_latency = now.elapsed().as_millis() as f64; 
+    let invoking_message_date = msg.id.created_at();
+    let mut msg = msg.reply(ctx, format!("{}ms", gateway_latency)).await?;
+    let reply_message_date = msg.id.created_at();
+    let time_diff = reply_message_date.signed_duration_since(*invoking_message_date);
+    msg.edit(&ctx, |m| m.content(format!("Gateway latency: {}ms\nPost latency: {}ms",gateway_latency, time_diff.num_milliseconds() as f64 - gateway_latency))).await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
+    let framework = StandardFramework::new()
+    .configure(|c| c.prefix("!"))
+    .group(&GENERAL_GROUP);
+
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let mut client = Client::builder(token, GatewayIntents::default())
+    let mut client = Client::builder(token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
         .event_handler(Handler)
+        .framework(framework)
         .await
         .expect("Error creating client");
 
