@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 
+use notify::Watcher;
 use serenity::async_trait;
 use serenity::framework::StandardFramework;
 use serenity::framework::standard::CommandResult;
@@ -8,6 +9,9 @@ use serenity::framework::standard::macros::{command, group};
 use serenity::model::gateway::{GatewayIntents, Ready};
 use serenity::model::prelude::{GuildChannel, Message};
 use serenity::prelude::*;
+use tokio::sync::watch;
+use tokio::fs;
+use tokio::io::AsyncBufReadExt;
 
 struct Handler;
 
@@ -15,9 +19,8 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn channel_create(&self, ctx: Context, channel: &GuildChannel) {
-        let messages = HashMap::from([
-            ("ticket-0545", "test"),
-            ]);
+        let data = ctx.data.read().await;
+        let messages = data.get::<MessagesData>().unwrap();
             
         if !messages.contains_key(channel.name()) { return; }
 
@@ -52,6 +55,12 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+pub struct MessagesData;
+
+impl serenity::prelude::TypeMapKey for MessagesData {
+    type Value = HashMap<String, String>;
+}
+
 #[tokio::main]
 async fn main() {
     let framework = StandardFramework::new()
@@ -60,13 +69,72 @@ async fn main() {
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
+    let messages = load_messages().await.expect("no messages");
+
     let mut client = Client::builder(token, GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT)
         .event_handler(Handler)
         .framework(framework)
         .await
         .expect("Error creating client");
 
+    client.data.write().await.insert::<MessagesData>(messages);
+    let (tx, mut rx) = watch::channel(false);
+    let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+        match res {
+           Ok(event) => {
+               if let notify::EventKind::Modify(_) = event.kind {
+                   tx.send(true).unwrap();
+               };
+            },
+           Err(e) => println!("watch error: {:?}", e),
+        }
+    }).expect("can't set up watcher");
+    watcher.watch(std::path::Path::new("messages.txt"), notify::RecursiveMode::NonRecursive).expect("can't set up watcher");
+    
+    let data = client.data.clone();
+    let _file_watchdog = tokio::task::spawn(async move {
+        loop {
+            if rx.changed().await.is_ok() {
+                let messages = load_messages().await.unwrap();
+                data.write().await.insert::<MessagesData>(messages);
+            }
+        }
+    });
+
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
     }
+}
+
+async fn load_messages() -> Option<HashMap<String, String>> {
+    let filename = "messages.txt";
+    let Ok(buf) = fs::read(filename).await else {
+        panic!("Could not read file `{}`", filename);
+    };
+    let mut lines = buf.lines();
+
+    let mut messages: HashMap<String, String> = HashMap::new();
+    let mut key = String::new();
+    while let Some(line) = lines.next_line().await.unwrap() {
+        if line.starts_with('[') && line.ends_with(']') {
+            if let Some(previous_entry) = messages.get_mut(&key) {
+                while previous_entry.chars().last().unwrap() == '\n' {
+                    previous_entry.pop();
+                }
+            };
+            key = line[1..line.len() - 1].to_owned();
+            messages.insert(key.clone(), String::new());
+        } else {
+            let entry = messages.get_mut(&key).unwrap();
+            entry.push_str(&line);
+            entry.push('\n');
+        }
+    }
+
+    let last_entry = messages.get_mut(&key).unwrap();
+    while last_entry.chars().last().unwrap() == '\n' {
+        last_entry.pop();
+    }
+
+    Some(messages)
 }
